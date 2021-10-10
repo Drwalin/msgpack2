@@ -16,9 +16,9 @@ map short    | 1110xxxx   | 0xE0 - 0xEF | 0x00 - 0x0F          |
 string long  | 11110000   | 0xF0        | 0x40 - uint64 max    | 
 array long   | 11110001   | 0xF1        | 0x20 - uint64 max    | 
 map long     | 11110010   | 0xF2        | 0x10 - uint64 max    | 
-array uint16 | 11110011   | 0xF3        | 0x10 - uint64 max    |  
-array uint32 | 11110100   | 0xF4        | 0x10 - uint64 max    | 
-array uint64 | 11110101   | 0xF5        | 0x10 - uint64 max    | 
+array uint16 | 11110011   | 0xF3        | 0x00 - uint64 max    |  
+array uint32 | 11110100   | 0xF4        | 0x00 - uint64 max    | 
+array uint64 | 11110101   | 0xF5        | 0x00 - uint64 max    | 
 true         | 11110110   | 0xF6        |                      | true
 false        | 11110111   | 0xF7        |                      | false
 real         | 11111000   | 0xF8        |                      | -a lot - +a lot
