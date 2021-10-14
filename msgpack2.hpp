@@ -35,25 +35,25 @@ namespace msgpack2 {
 		_uint7        = 0x00,  // 0x00:0x7F == 0x00:0x7F : [0x80]
 		_string_short = 0x80,  // 0x80:0xBF -> 0x00:0x3F : [0x40]
 		_array_short  = 0xC0,  // 0xC0:0xDF -> 0x00:0x1F : [0x20]
-		_map_short    = 0xE0,  // 0xE0:0xEF -> 0x00:0x0F : [0x10]
 
-		_one_type_types = 0xF0,
+		_one_type_types = 0xEF,
 
-		_array_types_begin = 0xF0,
+		_array_types_begin = 0xEF,
 
-		_string_long  = 0xF0,  // [ int size, uint8[size+0x40]      ]
-		_array_long   = 0xF1,  // [ int size, any[size+0x20]        ]
-		_map_long     = 0xF2,  // [ int size, {any ,any}[size+0x10] ]
+		_array_long    = 0xEF,  // [ int size, any[size+0x20]   ]
+		
+		_string_long   = 0xF0,  // [ int size, uint16[size]     ]
+		_array_uint16  = 0xF1,  // [ int size, uint16[size]     ]
+		_array_uint32  = 0xF2,  // [ int size, uint32[size]     ]
+		_array_uint64  = 0xF3,  // [ int size, uint64[size]     ]
+		_array_real    = 0xF4,  // [ int size, (int, int)[size] ]
 
-		_array_uint16  = 0xF3,  // [ int size, uint16[size]      ]
-		_array_uint32  = 0xF4,  // [ int size, uint32[size]      ]
-		_array_uint64  = 0xF5,  // [ int size, uint64[size]      ]
+		_array_types_end = 0xF4,
 
-		_array_types_end = 0xF5,
-
-		_true    = 0xF6,
-		_false   = 0xF7,
-		_real    = 0xF8,  // [ int exponent, int mantissa ]
+		_true    = 0xF5,
+		_false   = 0xF6,
+		_real    = 0xF7,  // [ _real, int exponent, int mantissa ]
+		_uint8   = 0xF8,
 		_uint16  = 0xF9,
 		_uint32  = 0xFA,
 		_uint64  = 0xFB,
@@ -63,18 +63,36 @@ namespace msgpack2 {
 		_sint64  = 0xFF,
 	};
 
-	enum Sizes {
-		_string_short_size = 0x40,
-		_array_short_size  = 0x20,
-		_map_short_size    = 0x10,
+	inline const static uint64_t _string_short_size = 0x40,
+	inline const static uint64_t _array_short_size  = 0x20,
 
-		_uint7_max = 0x7F,
-	};
-
+	inline const static uint64_t _uint7_min = 0x00,
+	inline const static uint64_t _uint7_max = 0x7F,
+	
+	inline const static uint64_t _uint8_min  = 0x00;
+	inline const static uint64_t _uint8_max  = 0xFF;
+	inline const static uint64_t _uint16_min = _uint8_max+1;
+	inline const static uint64_t _uint16_max = _uint8_max+(1<<16);
+	inline const static uint64_t _uint32_min = _uint16_max+1;
+	inline const static uint64_t _uint32_max = (uint64_t)_uint16_max+(uint64_t)(1ll<<32);
+	inline const static uint64_t _uint64_min = 0;
+	inline const static uint64_t _uint64_max = ~(uint64_t)0;
+	
+	inline const static int64_t _sint8_max  = -0x01;
+	inline const static int64_t _sint8_min  = -0x100;
+	inline const static int64_t _sint16_min = _sint8_min-(1ll<<16);
+	inline const static int64_t _sint16_max = _sint8_min-1;
+	inline const static int64_t _sint32_min = _sint16_min-(1ll<<32);
+	inline const static int64_t _sint32_max = _sint16_min-1;
+	inline const static int64_t _sint64_min = (1ll<<63);
+	inline const static int64_t _sint64_max = (1ll<<63)-1;
+	
+	
+	
 
 
 	inline Type GetType(const uint8_t* buffer);
-	inline void ReadTypeAndSize(Type& type, uint64_t& size,
+	inline void ReadTypeAndElementsCount(Type& type, uint64_t& size,
 			const uint8_t*& buffer, const uint8_t* end);
 	
 	inline const uint64_t ReadInteger(const uint8_t*& buffer, const uint8_t* end);
