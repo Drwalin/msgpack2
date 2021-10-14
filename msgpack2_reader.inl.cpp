@@ -27,8 +27,6 @@ namespace msgpack2 {
 		uint8_t v = *buffer;
 		if(v >= _one_type_types)
 			return (Type)v;
-		else if(v >= _map_short)
-			return _map_short;
 		else if(v >= _array_short)
 			return _array_short;
 		else if(v >= _string_short)
@@ -37,7 +35,7 @@ namespace msgpack2 {
 			return _uint7;
 	}
 
-	inline void ReadTypeAndSize(Type& type, uint64_t& size,
+	inline void ReadTypeAndElementsCount(Type& type, uint64_t& size,
 			const uint8_t*& buffer, const uint8_t* end) {
 		uint8_t v = *buffer;
 		if(v >= _one_type_types) {
@@ -49,9 +47,6 @@ namespace msgpack2 {
 					case _string_long:
 						size += _string_short_size;
 						break;
-					case _map_long:
-						size += _map_short_size;
-						break;
 					case _array_long:
 						size += _array_short_size;
 						break;
@@ -61,11 +56,10 @@ namespace msgpack2 {
 			} else {
 				size = 0;
 			}
+			return;
 		} else {
 			buffer++;
-			if(v >= _map_short) {
-				type = _map_short;
-			} else if(v >= _array_short) {
+			if(v >= _array_short) {
 				type = _array_short;
 			} else if(v >= _string_short) {
 				type = _string_short;
@@ -79,9 +73,11 @@ namespace msgpack2 {
 				return;
 			}
 			size = v - type;
+			if(buffer > end)
+				buffer = NULL;
+			return;
 		}
-		if(buffer > end)
-			buffer = NULL;
+		buffer = NULL;
 	}
 	
 	
@@ -96,26 +92,37 @@ namespace msgpack2 {
 		uint8_t v = *buffer;
 		size_t mod;
 		switch(v) {
-			case _uint16:
-				value = endian::ReadBigEndiand<uint16_t>(buffer+1)+0x80;
-				mod = 3;
-			case _uint32:
-				value = endian::ReadBigEndiand<uint32_t>(buffer+1)+0x80;
-				mod = 5;
-			case _uint64:
-				value = endian::ReadBigEndiand<uint64_t>(buffer+1)+0x80;
-				mod = 9;
-			case _sint8:
-				value = -*(int8_t*)(buffer+1);
+			case _uint8:
+				value = buffer[1];
 				mod = 2;
+				break;
+			case _uint16:
+				value = endian::ReadBigEndiand<uint16_t>(buffer+1)+_uint16_min;
+				mod = 3;
+				break;
+			case _uint32:
+				value = endian::ReadBigEndiand<uint32_t>(buffer+1)+_uint32_min;
+				mod = 5;
+				break;
+			case _uint64:
+				value = endian::ReadBigEndiand<uint64_t>(buffer+1);
+				mod = 9;
+				break;
+			case _sint8:
+				value = (-*(int8_t*)(buffer+1))+_sin8_min;
+				mod = 2;
+				break;
 			case _sint16:
 				value = -endian::ReadBigEndiand<int16_t>(buffer+1);
 				mod = 3;
+				break;
 			case _sint32:
 				value = -endian::ReadBigEndiand<int32_t>(buffer+1);
 				mod = 5;
+				break;
 			case _sint64:
 				value = -endian::ReadBigEndiand<int64_t>(buffer+1);
+				break;
 				mod = 9;
 			default:
 				if(v >= _uint7) {
@@ -231,7 +238,7 @@ namespace msgpack2 {
 		Type type;
 		uint64_t size=0;
 		std::string_view value;
-		ReadTypeAndSize(type, size, buffer, end);
+		ReadTypeAndElementsCount(type, size, buffer, end);
 		if((type == _string_long || type == _string_short) && buffer+size <= end) {
 			value = std::string_view((char*const)buffer,
 					(char*const)buffer+size);
