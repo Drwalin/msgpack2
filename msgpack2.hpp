@@ -27,6 +27,7 @@
 #include <bit>
 #include <string>
 #include <span>
+#include <tuple>
 
 #include "endian.hpp"
 
@@ -365,6 +366,28 @@ namespace msgpack2 {
 	
 	
 	
+	template<typename WriterT, std::size_t I = 0, typename... Args>
+	inline typename std::enable_if<I == sizeof...(Args), void>::type
+	WriteTupleFor(WriterT& writer, const std::tuple<Args...>& t) {
+	}
+
+	template<typename WriterT, std::size_t I = 0, typename... Args>
+	inline typename std::enable_if<I < sizeof...(Args), void>::type
+	WriteTupleFor(WriterT& writer, const std::tuple<Args...>& t) {
+		Write(writer, std::get<I>(t));
+		WriteTupleFor<WriterT, I + 1, Args...>(t);
+	}
+	
+	template<typename WriterT, typename... Args>
+	inline void Write(WriterT& writer, const std::tuple<Args...>& tuple) {
+		WriteHeaderArray(writer, sizeof...(Args));
+		WriteTupleFor(writer, tuple);
+	}
+	
+	
+	
+	
+	
 	
 	
 	template<typename T>
@@ -632,6 +655,36 @@ namespace msgpack2 {
 			return false;
 		value = v;
 		return true;
+	}
+	
+	
+	
+	template<std::size_t I = 0, typename... Args>
+	inline typename std::enable_if<I == sizeof...(Args), bool>::type
+	ReadTupleFor(std::tuple<Args...>& t, const uint8_t*& data,
+			const uint8_t* end) {
+		return true;
+	}
+
+	template<std::size_t I = 0, typename... Args>
+	inline typename std::enable_if<I < sizeof...(Args), bool>::type
+	ReadTupleFor(std::tuple<Args...>& t, const uint8_t*& data,
+			const uint8_t* end) {
+		if(Read(std::get<I>(t), data, end) == false)
+			return false;
+		return ReadTupleFor<I + 1, Args...>(t, data, end);
+	}
+	
+	template<typename... Args>
+	inline bool Read(const std::tuple<Args...>& tuple, const uint8_t*& data,
+			const uint8_t* end) {
+		HeaderValueSimplified head = ReadHeader(data, end);
+		if(head.type == HeaderValueSimplified::ARRAY) {
+			if(head.__elements != sizeof...(Args))
+				return false;
+			return ReadTupleFor(tuple, data, end);
+		}
+		return false;
 	}
 }
 
