@@ -1,5 +1,6 @@
 /*
- *  This file is part of msgpack2. Please see README for details.
+ *  This file is single file msgpack2 C++ implementation. Please see README for
+ *  details.
  *  Copyright (C) 2021 Marek Zalewski aka Drwalin
  *
  *  ICon3 is free software: you can redistribute it and/or modify
@@ -29,9 +30,76 @@
 #include <span>
 #include <tuple>
 
-#include "endian.hpp"
-
 namespace msgpack2 {
+	
+	template<typename T>
+	inline T byteswap(T value) {
+		if constexpr(sizeof(T) == 1)
+			return value;
+		union {
+			T v;
+			uint8_t b[sizeof(T)];
+		} src, dst;
+		src.v = value;
+		if constexpr(sizeof(T) == 2) {
+			dst.b[0] = src.b[1];
+			dst.b[1] = src.b[0];
+			return dst.v;
+		} else if constexpr(sizeof(T) == 4) {
+			dst.b[0] = src.b[3];
+			dst.b[1] = src.b[2];
+			dst.b[2] = src.b[1];
+			dst.b[3] = src.b[0];
+			return dst.v;
+		} else if constexpr(sizeof(T) == 8) {
+			dst.b[0] = src.b[7];
+			dst.b[1] = src.b[6];
+			dst.b[2] = src.b[5];
+			dst.b[3] = src.b[4];
+			dst.b[4] = src.b[3];
+			dst.b[5] = src.b[2];
+			dst.b[6] = src.b[1];
+			dst.b[7] = src.b[0];
+			return dst.v;
+		}
+	}
+
+	template<typename T>
+	inline T read_big_endian(const uint8_t* buffer) {
+		if constexpr (std::endian::native == std::endian::big)
+			return *(const T*)buffer;
+		else
+			return byteswap(*(const T*)buffer);
+	}
+
+	template<typename T>
+	inline void write_big_endian(T value, uint8_t* buffer) {
+		if constexpr (std::endian::native == std::endian::big)
+			*(T*)buffer = value;
+		else
+			*(T*)buffer = byteswap(value);
+	}
+	
+	inline uint64_t read_big_endian_bytes_size(uint64_t bytes,
+			const uint8_t* buffer) {
+		uint64_t ret = 0;
+		if constexpr (std::endian::native == std::endian::big) {
+			memcpy((&ret) + sizeof(uint64_t) - bytes, buffer, bytes);
+		} else {
+			for(;; ++buffer) {
+				--bytes;
+				ret |= ((uint64_t)(*buffer)) << (bytes<<3);
+				if(bytes == 0)
+					break;
+			}
+		}
+		return ret;
+	}
+	
+	
+	
+	
+	
 	// uint8[] == int8[] = char[] = string
 	enum Type {
 		_uint7        = 0x00,  // 0x00:0x7F == 0x00:0x7F : [0x80]
@@ -132,7 +200,7 @@ namespace msgpack2 {
 	template<typename WriterT>
 		inline void WriteBytes(WriterT& writer, const void* data,
 				uint64_t bytes);
-	template<typename WriterT, typename T>
+	template<typename WriterT>
 		inline void WritePush(WriterT& writer, uint8_t byte);
 	template<typename WriterT, typename T>
 		inline void WriteFixedBody(WriterT& writer, const T value);
@@ -144,16 +212,20 @@ namespace msgpack2 {
 	template<typename WriterT>
 		inline void WriteHeaderString(WriterT& writer, size_t elements);
 
+	/*
 	template<typename WriterT, typename T>
 		inline void Write(WriterT& writer, const T& value);
+		*/
 	
 	
 	
 	inline HeaderValueSimplified ReadHeader(const uint8_t*& data,
 			const uint8_t* end);
 	
+	/*
 	template<typename T>
 	inline bool Read(T& value, const uint8_t*& data, const uint8_t* end);
+	*/
 	
 	
 	
@@ -164,7 +236,7 @@ namespace msgpack2 {
 		memcpy(writer.make_space(bytes), data, bytes);
 	}
 
-	template<typename WriterT, typename T>
+	template<typename WriterT>
 	inline void WritePush(WriterT& writer, uint8_t byte) {
 		*writer.make_space(1) = byte;
 	}
@@ -174,80 +246,10 @@ namespace msgpack2 {
 		write_big_endian(value, writer.make_space(sizeof(T)));
 	}
 	
-	template<typename WriterT>
-	inline void WriteHeaderArray(WriterT& writer, size_t elements) {
-		if(elements < _array_short_size) {
-			writer.push(_array_short+elements);
-		} else if(((uint8_t)elements) == elements) {
-			writer.push(_array_long_8);
-			WriteFixedBody(writer, (uint8_t)elements);
-		} else if(((uint16_t)elements) == elements) {
-			writer.push(_array_long_16);
-			WriteFixedBody(writer, (uint16_t)elements);
-		} else if(((uint32_t)elements) == elements) {
-			writer.push(_array_long_32);
-			WriteFixedBody(writer, (uint32_t)elements);
-		} else {
-			writer.push(_array_long_64);
-			WriteFixedBody(writer, (uint64_t)elements);
-		}
-	}
 	
-	template<typename WriterT>
-	inline void WriteHeaderMap(WriterT& writer, size_t elements) {
-		if(((uint8_t)elements) == elements) {
-			writer.push(_map_long_8);
-			writer.push((uint8_t)elements);
-		} else if(((uint16_t)elements) == elements) {
-			writer.push(_map_long_16);
-			write_big_endian((uint16_t)elements, writer.make_space(2));
-		} else if(((uint32_t)elements) == elements) {
-			writer.push(_map_long_32);
-			write_big_endian((uint32_t)elements, writer.make_space(4));
-		} else {
-			writer.push(_map_long_64);
-			write_big_endian((uint64_t)elements, writer.make_space(8));
-		}
-	}
 	
-	template<typename WriterT>
-	inline void WriteHeaderString(WriterT& writer, size_t elements) {
-		if(elements < _string_short_size) {
-			writer.push(_string_short+elements);
-		} else if(((uint8_t)elements) == elements) {
-			writer.push(_string_long_8);
-			writer.push((uint8_t)elements);
-		} else if(((uint16_t)elements) == elements) {
-			writer.push(_string_long_16);
-			write_big_endian((uint16_t)elements, writer.make_space(2));
-		} else if(((uint32_t)elements) == elements) {
-			writer.push(_string_long_32);
-			write_big_endian((uint32_t)elements, writer.make_space(4));
-		} else {
-			writer.push(_string_long_64);
-			write_big_endian((uint64_t)elements, writer.make_space(8));
-		}
-	}
-
-
-
-	template<typename WriterT, typename T,
-		template<typename> typename array>
-	inline void Write(WriterT& writer, const array<T>& value) {
-		WriteHeaderArray(writer, value.size());
-		for(auto e : value)
-			Write(writer, e);
-	}
 	
-	template<typename WriterT, typename K, typename V,
-		template<typename, typename> typename map>
-	inline void PackAdd(WriterT& writer, const map<K, V>& value) {
-		WriteMapArray(writer, value.size());
-		for(auto e : value) {
-			Write(writer, e.first);
-			Write(writer, e.second);
-		}
-	}
+	
 	
 	template<typename WriterT, template<typename> typename array>
 	inline void Write(WriterT& writer, const array<uint8_t>& value) {
@@ -273,67 +275,77 @@ namespace msgpack2 {
 		WriteBytes(writer, value.data(), value.size());
 	}
 	
-	template<typename T>
-	inline void Write(std::vector<uint8_t>& writer, const T& value) {
-		struct VectorWriter {
-			std::vector<uint8_t>& vector;
-			inline uint8_t* make_space(size_t bytes) {
-				size_t s = vector.size();
-				vector.resize(s + bytes);
-				return vector.data()+s;
-			}
-		};
-		Write(VectorWriter{writer}, value);
-	}
-	
-	
 	
 	template<typename WriterT>
 	inline void Write(WriterT& writer, uint64_t value) {
 		if(value < _uint7_max) {
-			writer.push(_uint7+value);
+			WritePush(writer, (uint8_t)_uint7+(uint8_t)value);
 		} else if(((uint8_t)value) == value) {
-			writer.push(_uint8);
+			WritePush(writer, (uint8_t)_uint8);
 			WriteFixedBody(writer, (uint8_t)value);
 		} else if(((uint16_t)value) == value) {
-			writer.push(_uint16);
+			WritePush(writer, (uint8_t)_uint16);
 			WriteFixedBody(writer, (uint16_t)value);
 		} else if(((uint32_t)value) == value) {
-			writer.push(_uint32);
+			WritePush(writer, (uint8_t)_uint32);
 			WriteFixedBody(writer, (uint32_t)value);
 		} else {
-			writer.push(_uint64);
+			WritePush(writer, (uint8_t)_uint64);
 			WriteFixedBody(writer, (uint64_t)value);
 		}
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, uint32_t value) {
+		Write(writer, (uint64_t)value);
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, uint16_t value) {
+		Write(writer, (uint64_t)value);
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, uint8_t value) {
+		Write(writer, (uint64_t)value);
 	}
 	
 	template<typename WriterT>
 	inline void Write(WriterT& writer, int64_t value) {
 		if(((int8_t)value) == value) {
-			writer.push(_sint8);
+			WritePush(writer, (uint8_t)_sint8);
 			WriteFixedBody(writer, (uint8_t)value);
 		} else if(((int16_t)value) == value) {
-			writer.push(_sint16);
+			WritePush(writer, (uint8_t)_sint16);
 			WriteFixedBody(writer, (uint16_t)value);
 		} else if(((int32_t)value) == value) {
-			writer.push(_sint32);
+			WritePush(writer, (uint8_t)_sint32);
 			WriteFixedBody(writer, (uint32_t)value);
 		} else {
-			writer.push(_sint64);
+			WritePush(writer, (uint8_t)_sint64);
 			WriteFixedBody(writer, (uint64_t)value);
 		}
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, int32_t value) {
+		Write(writer, (int64_t)value);
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, int16_t value) {
+		Write(writer, (int64_t)value);
+	}
+	template<typename WriterT>
+	inline void Write(WriterT& writer, int8_t value) {
+		Write(writer, (int64_t)value);
 	}
 	
 	template<typename WriterT>
 	inline void Write(WriterT& writer, bool value) {
-		WritePush(writer, value ? _true : _false);
+		WritePush(writer, value ? (uint8_t)_true : (uint8_t)_false);
 	}
 	
 	
 	
 	template<typename WriterT>
 	inline void WriteReal(WriterT& writer, long double value) {
-		WritePush(writer, _real);
+		WritePush(writer, (uint8_t)_real);
 		int exp = 0;
 		double mantissaDouble = frexp(value, &exp);
 		mantissaDouble = ldexp(mantissaDouble, 62);
@@ -366,6 +378,84 @@ namespace msgpack2 {
 	
 	
 	
+	
+	template<typename WriterT>
+	inline void WriteHeaderArray(WriterT& writer, size_t elements) {
+		if(elements < _array_short_size) {
+			WritePush(writer, (uint8_t)_array_short+(uint8_t)elements);
+		} else if(((uint8_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_array_long_8);
+			WriteFixedBody(writer, (uint8_t)elements);
+		} else if(((uint16_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_array_long_16);
+			WriteFixedBody(writer, (uint16_t)elements);
+		} else if(((uint32_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_array_long_32);
+			WriteFixedBody(writer, (uint32_t)elements);
+		} else {
+			WritePush(writer, (uint8_t)_array_long_64);
+			WriteFixedBody(writer, (uint64_t)elements);
+		}
+	}
+	
+	template<typename WriterT>
+	inline void WriteHeaderMap(WriterT& writer, size_t elements) {
+		if(((uint8_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_map_long_8);
+			WritePush(writer, (uint8_t)elements);
+		} else if(((uint16_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_map_long_16);
+			write_big_endian((uint16_t)elements, writer.make_space(2));
+		} else if(((uint32_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_map_long_32);
+			write_big_endian((uint32_t)elements, writer.make_space(4));
+		} else {
+			WritePush(writer, (uint8_t)_map_long_64);
+			write_big_endian((uint64_t)elements, writer.make_space(8));
+		}
+	}
+	
+	template<typename WriterT>
+	inline void WriteHeaderString(WriterT& writer, size_t elements) {
+		if(elements < _string_short_size) {
+			WritePush(writer, (uint8_t)_string_short+(uint8_t)elements);
+		} else if(((uint8_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_string_long_8);
+			WritePush(writer, (uint8_t)elements);
+		} else if(((uint16_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_string_long_16);
+			write_big_endian((uint16_t)elements, writer.make_space(2));
+		} else if(((uint32_t)elements) == elements) {
+			WritePush(writer, (uint8_t)_string_long_32);
+			write_big_endian((uint32_t)elements, writer.make_space(4));
+		} else {
+			WritePush(writer, (uint8_t)_string_long_64);
+			write_big_endian((uint64_t)elements, writer.make_space(8));
+		}
+	}
+
+
+
+	template<typename WriterT, typename T,
+		template<typename> typename array>
+	inline void Write(WriterT& writer, const array<T>& value) {
+		WriteHeaderArray(writer, value.size());
+		for(const auto& e : value)
+			Write(writer, e);
+	}
+	
+	template<typename WriterT, typename K, typename V,
+		template<typename, typename> typename map>
+	inline void PackAdd(WriterT& writer, const map<K, V>& value) {
+		WriteMapArray(writer, value.size());
+		for(auto e : value) {
+			Write(writer, e.first);
+			Write(writer, e.second);
+		}
+	}
+	
+	
+	
 	template<typename WriterT, std::size_t I = 0, typename... Args>
 	inline typename std::enable_if<I == sizeof...(Args), void>::type
 	WriteTupleFor(WriterT& writer, const std::tuple<Args...>& t) {
@@ -375,7 +465,7 @@ namespace msgpack2 {
 	inline typename std::enable_if<I < sizeof...(Args), void>::type
 	WriteTupleFor(WriterT& writer, const std::tuple<Args...>& t) {
 		Write(writer, std::get<I>(t));
-		WriteTupleFor<WriterT, I + 1, Args...>(t);
+		WriteTupleFor<WriterT, I + 1, Args...>(writer, t);
 	}
 	
 	template<typename WriterT, typename... Args>
@@ -383,6 +473,21 @@ namespace msgpack2 {
 		WriteHeaderArray(writer, sizeof...(Args));
 		WriteTupleFor(writer, tuple);
 	}
+	
+	template<typename T>
+	inline void WriteBuffer(std::vector<uint8_t>& writer, const T& value) {
+		struct VectorWriter {
+			std::vector<uint8_t>& vector;
+			inline uint8_t* make_space(size_t bytes) {
+				size_t s = vector.size();
+				vector.resize(s + bytes);
+				return vector.data()+s;
+			}
+		};
+		VectorWriter o{writer};
+		Write(o, value);
+	}
+	
 	
 	
 	
@@ -589,6 +694,25 @@ namespace msgpack2 {
 		return false;
 	}
 	
+	template<typename V,
+		template<typename, typename> typename map>
+	inline bool Read(map<std::string, V>& value, const uint8_t*& data,
+			const uint8_t* end) {
+		HeaderValueSimplified head = ReadHeader(data, end);
+		if(head.type == HeaderValueSimplified::ARRAY) {
+			value.clear();
+			for(uint64_t i=0; i<head.__elements; ++i) {
+				std::string key;
+				if(Read(key, data, end) == false)
+					return false;
+				if(Read(value[key], data, end) == false)
+					return false;
+			}
+			return true;
+		}
+		return false;
+	}
+	
 	template<typename T, template<typename> typename array>
 	inline bool Read(array<T>& value, const uint8_t*& data,
 			const uint8_t* end) {
@@ -598,25 +722,6 @@ namespace msgpack2 {
 			value.resize(head.__elements);
 			for(T& elem : value) {
 				if(Read(elem, data, end) == false)
-					return false;
-			}
-			return true;
-		}
-		return false;
-	}
-	
-	template<typename K, typename V,
-		template<typename, typename> typename map>
-	inline bool Read(map<K, V>& value, const uint8_t*& data,
-			const uint8_t* end) {
-		HeaderValueSimplified head = ReadHeader(data, end);
-		if(head.type == HeaderValueSimplified::ARRAY) {
-			value.clear();
-			for(uint64_t i=0; i<head.__elements; ++i) {
-				K key;
-				if(Read(key, data, end) == false)
-					return false;
-				if(Read(value[key], data, end) == false)
 					return false;
 			}
 			return true;
